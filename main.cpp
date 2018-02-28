@@ -38,35 +38,72 @@ int main(int argc, char** argv){
 	int rows = div_y.quot;
 
 	// add remainder to processes
-	if(coords[0] < div_x.rem)
+	if(coords[1] < div_x.rem)
 		++cols;
-	if(coords[1] < div_y.rem)
+	if(coords[0] < div_y.rem)
 		++rows;
 
-	/////////////////////////////////
-	// calculate HALO here 
-	////////////////////////////////
+	// get neighbours
+	int neighbour_left;
+	int neighbour_right;
+	int neighbour_up;
+	int neighbour_down;
+
+	MPI_Cart_shift(comm_cart, 1, 1, &neighbour_left, &neighbour_right);
+	MPI_Cart_shift(comm_cart, 0, 1, &neighbour_up, &neighbour_down);
+
+	int offset_left, offset_right, offset_up, offset_down;
+	offset_down=offset_up=offset_left=offset_right=0;
 	
+	// add space for HALO		
+	if(neighbour_left != MPI_PROC_NULL){
+		++cols;
+		offset_left=1;
+	}
+	if(neighbour_right != MPI_PROC_NULL){
+		++cols;
+		offset_right=1;
+	}
+	if(neighbour_up != MPI_PROC_NULL){
+		++rows; 
+		offset_up=1;
+	}
+ 	if(neighbour_down != MPI_PROC_NULL){
+		++rows; 
+		offset_down=1;
+ 	}
+
 	// data container
 	float data[rows][cols];
-
-	// fill data
 	for(int i=0; i<rows; ++i)
 		for(int j=0; j<cols;++j)
-			data[i][j] = 0.2;
+			data[i][j] = 0;
+	// fill data
+	for(int i=0+offset_up; i<rows-offset_down; ++i)
+		for(int j=0+offset_left; j<cols-offset_right;++j)
+			data[i][j] = 0.2+my_rank;
+
+	// send data to process 0
+	// if(my_rank == 0){
+	// 	MPI_Request handler;
+	// 	for(int rank=1; rank<num_procs; ++rank){
+	// 		MPI_Irecv(tmp, rows*cols, MPI_FLOAT, rank, 0, MPI_COMM_WORLD, &handler);
+	// 	}
+	// 	MPI_Wait(&handler, MPI_STATUS_IGNORE);
+	// } else {
+	// 	MPI_SEND(data, rows*cols, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+	// }
 
 
 
 
 
 
-
-
-	// Output
+	// Output eve< rank
 	for(int rank=0; rank<num_procs; ++rank){
 		MPI_Barrier(MPI_COMM_WORLD);
 		if(my_rank == rank){
-			cout << "From process " << my_rank << ":" << endl;
+			cout << "From process: " << my_rank << " coords: " << "(" << coords[0] << "," << coords[1] << ")" <<endl;
 			for(int i=0; i < rows; ++i){
 				for(int j=0; j < cols; ++j)
 					cout << data[i][j] << "\t";
