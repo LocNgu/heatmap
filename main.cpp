@@ -58,7 +58,7 @@ int main(int argc, char** argv){
 	int offset_down=0;
 	int cols_halo = cols;
 	int rows_halo = rows;
-	
+
 	// add space for HALO		
 	if(neighbour_left != MPI_PROC_NULL){
 		++cols_halo;
@@ -84,10 +84,27 @@ int main(int argc, char** argv){
 		for(int j=0; j<cols_halo;++j)
 			data[i][j] = 0;
 
-	// fill data
+	// fill with data
 	for(int i=0+offset_up; i<rows_halo-offset_down; ++i)
 		for(int j=0+offset_left; j<cols_halo-offset_right;++j)
-			data[i][j] = 0.2 + my_rank + (float)j/10;
+			data[i][j] = 0.2;
+
+	// heat soruce
+	// border
+	if(neighbour_up == MPI_PROC_NULL)
+		for(int i=0; i < cols; ++i)
+			data[0][i] = 1;
+	if(neighbour_down == MPI_PROC_NULL)
+		for(int i=0; i < cols; ++i)
+			data[rows_halo-1][i] = 1;
+	if(neighbour_left == MPI_PROC_NULL)
+		for(int i=0; i < rows; ++i)
+			data[i][0] = 1;
+	if(neighbour_right == MPI_PROC_NULL)
+		for(int i=0; i < rows; ++i)
+			data[i][cols_halo-1] = 1;
+
+
 	
 	/////////////////////////
 	// send data to neighbour
@@ -112,10 +129,10 @@ int main(int argc, char** argv){
 
 	// send data north -> south	
 	if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
-		MPI_Send(data, cols_halo, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD);
+		MPI_Send(data[1], cols_halo, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD);
 
 	if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
-		MPI_Sendrecv(data[rows-1], cols_halo, MPI_FLOAT, neighbour_down, 0, data, cols_halo, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		MPI_Sendrecv(data[1], cols_halo, MPI_FLOAT, neighbour_down, 0, data, cols_halo, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 	if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
 		MPI_Recv(data, cols_halo, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
