@@ -52,60 +52,105 @@ int main(int argc, char** argv){
 	MPI_Cart_shift(comm_cart, 1, 1, &neighbour_left, &neighbour_right);
 	MPI_Cart_shift(comm_cart, 0, 1, &neighbour_up, &neighbour_down);
 
-	int offset_left, offset_right, offset_up, offset_down;
-	offset_down=offset_up=offset_left=offset_right=0;
+	int offset_left=0;
+	int offset_right=0;
+	int offset_up=0;
+	int offset_down=0;
+	int cols_halo = cols;
+	int rows_halo = rows;
 	
 	// add space for HALO		
 	if(neighbour_left != MPI_PROC_NULL){
-		++cols;
+		++cols_halo;
 		offset_left=1;
 	}
 	if(neighbour_right != MPI_PROC_NULL){
-		++cols;
+		++cols_halo;
 		offset_right=1;
 	}
 	if(neighbour_up != MPI_PROC_NULL){
-		++rows; 
+		++rows_halo; 
 		offset_up=1;
 	}
  	if(neighbour_down != MPI_PROC_NULL){
-		++rows; 
+		++rows_halo; 
 		offset_down=1;
  	}
 
 	// data container
-	float data[rows][cols];
-	for(int i=0; i<rows; ++i)
-		for(int j=0; j<cols;++j)
+	float data[rows_halo][cols_halo];
+	// initialize container with 0
+	for(int i=0; i<rows_halo; ++i)
+		for(int j=0; j<cols_halo;++j)
 			data[i][j] = 0;
+
 	// fill data
-	for(int i=0+offset_up; i<rows-offset_down; ++i)
-		for(int j=0+offset_left; j<cols-offset_right;++j)
-			data[i][j] = 0.2+my_rank;
+	for(int i=0+offset_up; i<rows_halo-offset_down; ++i)
+		for(int j=0+offset_left; j<cols_halo-offset_right;++j)
+			data[i][j] = 0.2 + my_rank + (float)j/10;
+	
+	/////////////////////////
+	// send data to neighbour
+	// halo communication
+	/////////////////////////
+	
+	// send data west -> east	
+	MPI_Datatype new_type;
+		// int MPI_Type_vector(int count, int blocklength, int stride, MPI_Datatype oldtype, MPI_Datatype *newtype)
+	MPI_Type_vector(rows_halo, 1, cols_halo, MPI_FLOAT, &new_type);
+	MPI_Type_commit(&new_type);
 
-	// send data to process 0
-	// if(my_rank == 0){
-	// 	MPI_Request handler;
-	// 	for(int rank=1; rank<num_procs; ++rank){
-	// 		MPI_Irecv(tmp, rows*cols, MPI_FLOAT, rank, 0, MPI_COMM_WORLD, &handler);
-	// 	}
-	// 	MPI_Wait(&handler, MPI_STATUS_IGNORE);
-	// } else {
-	// 	MPI_SEND(data, rows*cols, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
-	// }
+	if(neighbour_left == MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+		MPI_Send(&data[0][cols-1], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD);
+
+	if(neighbour_left != MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+	//MPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf,recvcount, recvtype, source, recvtag, comm, status, ierror)
+		MPI_Sendrecv(data[cols-1], 1, new_type, neighbour_right, 0, data, 1, new_type, neighbour_left, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+	if(neighbour_left != MPI_PROC_NULL && neighbour_right == MPI_PROC_NULL)
+		MPI_Recv(data, 1, new_type, neighbour_left, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+	// send data north -> south	
+	if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+		MPI_Send(data, cols_halo, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD);
+
+	if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+		MPI_Sendrecv(data[rows-1], cols_halo, MPI_FLOAT, neighbour_down, 0, data, cols_halo, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+	if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
+		MPI_Recv(data, cols_halo, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 
+	// send data east -> west	
+	if(neighbour_left != MPI_PROC_NULL && neighbour_right == MPI_PROC_NULL)
+		MPI_Send(&data[0][1], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD);
 
+	if(neighbour_left != MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+		MPI_Sendrecv(&data[0][1], 1, new_type, neighbour_left, 0, &data[0][cols], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+	if(neighbour_left == MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+		MPI_Recv(&data[0][cols], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		
+	MPI_Type_free(&new_type);
+
+	// send data south -> north	
+	if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
+		MPI_Send(data[1], cols_halo, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD);
+
+	if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+		MPI_Sendrecv(data[1], cols_halo, MPI_FLOAT, neighbour_up, 0, data[rows+1], cols_halo, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+	if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+		MPI_Recv(data[rows], cols_halo, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 
 	// Output eve< rank
 	for(int rank=0; rank<num_procs; ++rank){
 		MPI_Barrier(MPI_COMM_WORLD);
 		if(my_rank == rank){
-			cout << "From process: " << my_rank << " coords: " << "(" << coords[0] << "," << coords[1] << ")" <<endl;
-			for(int i=0; i < rows; ++i){
-				for(int j=0; j < cols; ++j)
+			cout << "From process: " << my_rank << " coords: " << "(" << coords[1] << "," << coords[0] << ")" <<endl;
+			for(int i=0; i < rows_halo; ++i){
+				for(int j=0; j < cols_halo; ++j)
 					cout << data[i][j] << "\t";
 				cout << "\n";
 			}
