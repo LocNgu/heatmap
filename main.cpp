@@ -113,6 +113,9 @@ int main(int argc, char** argv){
 		for(int i=offset_up; i < rows + offset_up; ++i)
 			data[i][cols-1+offset_left] = 1;
 
+	if(my_rank == 0)
+		data[cols/2][rows/2] = 20;
+
 
 	// 	halo communication    //
 	// send data to neighbour //
@@ -227,12 +230,43 @@ int main(int argc, char** argv){
 					++neighbours;
 				}
 				float core = data[i][j];
-				float neighbours_avg = ( north + south + east + west)/neighbours;
+				float neighbours_avg = 0.15*( north + south + east + west);
 
-				data[i][j] = core - (core - neighbours_avg);
+				data[i][j] = 0.4*core + neighbours_avg;
 			}
 		}
 	} // Iteration end
+
+
+	// if(my_rank == 0)
+		// float matrix[matrix_size][matrix_size];
+
+	// int displs[num_procs];
+	// displs[my_rank] = cols*rows;
+
+	// // send all data back to process 0 for output
+	// /*MPI_Gatherv(
+	// 	const void *sendbuf, 
+	// 	int sendcount, 
+	// 	MPI_Datatype sendtype,
+	// 	void *recvbuf, 
+	// 	const int recvcounts[],
+	// 	const int displs[], 
+	// 	MPI_Datatype recvtype, 
+	// 	int root, MPI_Comm comm)*/
+	// MPI_Gatherv(data[offset_up][offset_left], cols*rows, MPI_FLOAT, matrix, matrix_size*matrix_size, const int displs[], MPI_FLOAT, 0, MPI_COMM_WORLD);
+	
+
+	// if(my_rank == 0){
+	// 	// Output eve< rank
+	// 	cout << "\n\nFinal Output" <<endl;
+	// 	for(int i=0; i < matrix_size; ++i){
+	// 		for(int j=0; j < matrix_size; ++j)
+	// 			cout << setprecision(2)<< matrix[i][j] << "\t";
+	// 		cout << "\n" << endl;
+	// 	}
+
+	// }
 
 
 
