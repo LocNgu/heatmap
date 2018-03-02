@@ -1,6 +1,9 @@
 #include <mpi.h>
 #include <iostream>
 #include <array>
+#include <vector>
+#include <iomanip>
+#include <algorithm>
 
 using namespace std;
 
@@ -15,6 +18,7 @@ int main(int argc, char** argv){
 
 	// parameter, matrix size m×m
 	int matrix_size = stoi(argv[1]);
+	int iterations = stoi(argv[2]);
 	
 	// process per dimension
 	int dims[2] = {0, 0};
@@ -79,6 +83,7 @@ int main(int argc, char** argv){
 
 	// data container
 	float data[rows_halo][cols_halo];
+	// vector<vector<float, cols_halo>, rows_halo> data;
 	// initialize container with 0
 	for(int i=0; i<=rows_halo; ++i)
 		for(int j=0; j<=cols_halo;++j)
@@ -87,7 +92,7 @@ int main(int argc, char** argv){
 	// fill with data
 	for(int i=0+offset_up; i<rows+offset_up; ++i)
 		for(int j=0+offset_left; j<cols+offset_left;++j)
-			data[i][j] = my_rank*10;
+			data[i][j] = 0.2;
 
 	// heat soruce
 	// border
@@ -109,75 +114,129 @@ int main(int argc, char** argv){
 			data[i][cols-1+offset_left] = 1;
 
 
-	
-	////////////////////////////
 	// 	halo communication    //
 	// send data to neighbour //
-	////////////////////////////
-	
-	// send data west -> east	
-	MPI_Datatype new_type;
-		// int MPI_Type_vector(int count, int blocklength, int stride, MPI_Datatype oldtype, MPI_Datatype *newtype)
-	MPI_Type_vector(rows, 1, cols_halo, MPI_FLOAT, &new_type);
-	MPI_Type_commit(&new_type);
 
-	if(neighbour_left == MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
-		MPI_Send(&data[offset_up][cols-1], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD);
+	for(int i=0; i <iterations; ++i){
 
-	if(neighbour_left != MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
-	//MPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf,recvcount, recvtype, source, recvtag, comm, status, ierror)
-		MPI_Sendrecv(&data[offset_up][cols-1], 1, new_type, neighbour_right, 0, &data[offset_up][0], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		// Output eve< rank
+		for(int rank=0; rank<num_procs; ++rank){
+			MPI_Barrier(MPI_COMM_WORLD);
+			if(my_rank == rank){
+				cout << "From process: " << my_rank << " coords: " << "(" << coords[1] << "," << coords[0] << ")" <<endl;
+				for(int i=0; i < rows_halo; ++i){
+					for(int j=0; j < cols_halo; ++j)
+						cout << setprecision(2)<< data[i][j] << "\t";
+					cout << "\n";
+				}
+				cout << "\n" << endl;
+			}	
+		}
 
-	if(neighbour_left != MPI_PROC_NULL && neighbour_right == MPI_PROC_NULL)
-		MPI_Recv(&data[offset_up][0], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		// send data west -> east	
+		MPI_Datatype new_type;
+			// int MPI_Type_vector(int count, int blocklength, int stride, MPI_Datatype oldtype, MPI_Datatype *newtype)
+		MPI_Type_vector(rows, 1, cols_halo, MPI_FLOAT, &new_type);
+		MPI_Type_commit(&new_type);
 
-	// // send data north -> south	
-	if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
-		MPI_Send(&data[rows-1][offset_left], cols, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD);
+		if(neighbour_left == MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+			MPI_Send(&data[offset_up][cols-1], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD);
 
-	if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
-		MPI_Sendrecv(&data[rows-1+offset_up][offset_left], cols, MPI_FLOAT, neighbour_down, 0, &data[0][offset_left], cols, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		if(neighbour_left != MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+		//MPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf,recvcount, recvtype, source, recvtag, comm, status, ierror)
+			MPI_Sendrecv(&data[offset_up][cols-1], 1, new_type, neighbour_right, 0, &data[offset_up][0], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
-		MPI_Recv(&data[0][offset_left], cols, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		if(neighbour_left != MPI_PROC_NULL && neighbour_right == MPI_PROC_NULL)
+			MPI_Recv(&data[offset_up][0], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+		// // send data north -> south	
+		if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+			MPI_Send(&data[rows-1][offset_left], cols, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD);
 
-	// send data east -> west	
-	if(neighbour_left != MPI_PROC_NULL && neighbour_right == MPI_PROC_NULL)
-		MPI_Send(&data[offset_up][offset_left], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD);
+		if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+			MPI_Sendrecv(&data[rows-1+offset_up][offset_left], cols, MPI_FLOAT, neighbour_down, 0, &data[0][offset_left], cols, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-	if(neighbour_left != MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
-		MPI_Sendrecv(&data[offset_up][offset_left], 1, new_type, neighbour_left, 0, &data[offset_up][cols], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-	if(neighbour_left == MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
-		MPI_Recv(&data[offset_up][cols], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		
-	MPI_Type_free(&new_type);
-
-	// send data south -> north	
-	if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
-		MPI_Send(&data[offset_up][offset_left], cols, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD);
-
-	if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
-		MPI_Sendrecv(&data[offset_up][offset_left], cols, MPI_FLOAT, neighbour_up, 0, &data[rows+offset_up][offset_left], cols, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-	if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
-		MPI_Recv(&data[rows][offset_left], cols, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
+			MPI_Recv(&data[0][offset_left], cols, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 
-	// Output eve< rank
-	for(int rank=0; rank<num_procs; ++rank){
+		// send data east -> west	
+		if(neighbour_left != MPI_PROC_NULL && neighbour_right == MPI_PROC_NULL)
+			MPI_Send(&data[offset_up][offset_left], 1, new_type, neighbour_left, 0, MPI_COMM_WORLD);
+
+		if(neighbour_left != MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+			MPI_Sendrecv(&data[offset_up][offset_left], 1, new_type, neighbour_left, 0, &data[offset_up][cols], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+		if(neighbour_left == MPI_PROC_NULL && neighbour_right != MPI_PROC_NULL)
+			MPI_Recv(&data[offset_up][cols], 1, new_type, neighbour_right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			
+		MPI_Type_free(&new_type);
+
+		// send data south -> north	
+		if(neighbour_up != MPI_PROC_NULL && neighbour_down == MPI_PROC_NULL)
+			MPI_Send(&data[offset_up][offset_left], cols, MPI_FLOAT, neighbour_up, 0, MPI_COMM_WORLD);
+
+		if(neighbour_up != MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+			MPI_Sendrecv(&data[offset_up][offset_left], cols, MPI_FLOAT, neighbour_up, 0, &data[rows+offset_up][offset_left], cols, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+		if(neighbour_up == MPI_PROC_NULL && neighbour_down != MPI_PROC_NULL)
+			MPI_Recv(&data[rows][offset_left], cols, MPI_FLOAT, neighbour_down, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
 		MPI_Barrier(MPI_COMM_WORLD);
-		if(my_rank == rank){
-			cout << "From process: " << my_rank << " coords: " << "(" << coords[1] << "," << coords[0] << ")" <<endl;
-			for(int i=0; i < rows_halo; ++i){
-				for(int j=0; j < cols_halo; ++j)
-					cout << data[i][j] << "\t";
-				cout << "\n";
+
+		////////////////////////////
+		// 		calculation		  //
+		////////////////////////////
+		float data_old[rows_halo][cols_halo]; 
+		for(int m=0; m < rows_halo;++m)
+			for (int n=0; n < cols_halo; ++n)
+				data_old[m][n] = data[m][n];
+
+		for(int i = 0 + offset_up; i < rows+offset_up; ++i){
+			for(int j = 0 + offset_left; j < cols + offset_left; ++j){
+				
+				int neighbours = 0;
+				float north = 0;
+				float south = 0;
+				float east = 0;
+				float west = 0;
+
+				float core_factor = 1;
+				float n_factor = 1;
+				// north
+				if(i-1 >= 0){
+					north = n_factor * data_old[i-1][j];
+					++neighbours;
+				}
+
+				// south
+				if(i+1 < rows_halo){
+					south = n_factor * data_old[i+1][j];
+					++neighbours;				
+				}
+
+				// east
+				if(j-1 >= 0){
+					east = n_factor * data_old[i][j-1];
+					++neighbours;
+				}
+
+				// west 
+				if(j+1<cols_halo){
+					west = n_factor * data_old[i][j+1];
+					++neighbours;
+				}
+				float core = data[i][j];
+				float neighbours_avg = ( north + south + east + west)/neighbours;
+
+				data[i][j] = core - (core - neighbours_avg);
 			}
-			cout << "\n" << endl;
-		}	
-	}
+		}
+	} // Iteration end
+
+
+
+
 
 	MPI_Finalize();
 	return 0;
