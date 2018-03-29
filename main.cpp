@@ -1,3 +1,7 @@
+/*
+mpiexec -np [processes] --oversubscribe ./main [matrixsize] [iterations]
+*/
+
 #include <mpi.h>
 #include <iostream>
 #include <array>
@@ -85,8 +89,8 @@ int main(int argc, char** argv){
 	float data[rows_halo][cols_halo];
 	// vector<vector<float, cols_halo>, rows_halo> data;
 	// initialize container with 0
-	for(int i=0; i<=rows_halo; ++i)
-		for(int j=0; j<=cols_halo;++j)
+	for(int i=0; i<rows_halo; ++i)
+		for(int j=0; j<cols_halo;++j)
 			data[i][j] = 0;
 
 	// fill with data
@@ -113,28 +117,14 @@ int main(int argc, char** argv){
 		for(int i=offset_up; i < rows + offset_up; ++i)
 			data[i][cols-1+offset_left] = 1;
 
-	if(my_rank == 0)
-		data[cols/2][rows/2] = 20;
+	// if(my_rank == 0)
+	// 	data[cols/2][rows/2] = 20;
 
 
 	// 	halo communication    //
 	// send data to neighbour //
 
 	for(int i=0; i <iterations; ++i){
-
-		// Output eve< rank
-		for(int rank=0; rank<num_procs; ++rank){
-			MPI_Barrier(MPI_COMM_WORLD);
-			if(my_rank == rank){
-				cout << "From process: " << my_rank << " coords: " << "(" << coords[1] << "," << coords[0] << ")" <<endl;
-				for(int i=0; i < rows_halo; ++i){
-					for(int j=0; j < cols_halo; ++j)
-						cout << setprecision(2)<< data[i][j] << "\t";
-					cout << "\n";
-				}
-				cout << "\n" << endl;
-			}	
-		}
 
 		// send data west -> east	
 		MPI_Datatype new_type;
@@ -235,42 +225,90 @@ int main(int argc, char** argv){
 				data[i][j] = 0.4*core + neighbours_avg;
 			}
 		}
+		// Output eve< rank
+		for(int rank=0; rank<num_procs; ++rank){
+			MPI_Barrier(MPI_COMM_WORLD);
+			if(my_rank == rank){
+				cout << "From process: " << my_rank << " coords: " << "(" << coords[1] << "," << coords[0] << ")" <<endl;
+				for(int i=0; i < rows_halo; ++i){
+					for(int j=0; j < cols_halo; ++j)
+						cout << setprecision(2)<< data[i][j] << "\t";
+					cout << "\n";
+				}
+				cout << "\n" << endl;
+			}	
+		}
 	} // Iteration end
 
 
-	// if(my_rank == 0)
-		// float matrix[matrix_size][matrix_size];
+	int sendcount = cols*rows;
+	MPI_Datatype send_type;
+	MPI_Type_vector(rows, cols, cols_halo, MPI_FLOAT, &send_type);
+	MPI_Type_commit(&send_type);
 
-	// int displs[num_procs];
-	// displs[my_rank] = cols*rows;
+	// recvbuf
+	vector<float> recvbuf;
+	if(my_rank == 0)
+		recvbuf.resize(matrix_size*matrix_size);
 
-	// // send all data back to process 0 for output
-	// /*MPI_Gatherv(
-	// 	const void *sendbuf, 
-	// 	int sendcount, 
-	// 	MPI_Datatype sendtype,
-	// 	void *recvbuf, 
-	// 	const int recvcounts[],
-	// 	const int displs[], 
-	// 	MPI_Datatype recvtype, 
-	// 	int root, MPI_Comm comm)*/
-	// MPI_Gatherv(data[offset_up][offset_left], cols*rows, MPI_FLOAT, matrix, matrix_size*matrix_size, const int displs[], MPI_FLOAT, 0, MPI_COMM_WORLD);
-	
+	MPI_Datatype recv_type;
+	int stride;
+	stride = matrix_size;
+	MPI_Type_vector(rows, cols, stride, MPI_FLOAT, &recv_type);
+	MPI_Type_commit(&recv_type);
 
-	// if(my_rank == 0){
-	// 	// Output eve< rank
-	// 	cout << "\n\nFinal Output" <<endl;
-	// 	for(int i=0; i < matrix_size; ++i){
-	// 		for(int j=0; j < matrix_size; ++j)
-	// 			cout << setprecision(2)<< matrix[i][j] << "\t";
-	// 		cout << "\n" << endl;
-	// 	}
+	int recv_count[num_procs];
+	for(int i=0; i < num_procs;++i)
+		recv_count[i] = 1;
+		// recv_count[i] = rows*cols;
 
-	// }
+	// displacement
+	int displs[num_procs];
+	for(int i=0; i < num_procs;++i)
+		displs[i] = i;
+		// displs[i] = i*cols*rows;
 
 
+	// send all data back to process 0 for output
+	/*MPI_Gatherv(
+		const void *sendbuf, 
+		int sendcount, 
+		MPI_Datatype sendtype,
+		void *recvbuf, 
+		const int recvcounts[],
+		const int displs[], 
+		MPI_Datatype recvtype, 
+		int root, 
+		MPI_Comm comm)*/
+	MPI_Gatherv(&data[offset_up][offset_left], 
+				1, 
+				send_type, 
+				recvbuf.data(), 
+				recv_count, 
+				displs, 
+				recv_type, 
+				0, 
+				MPI_COMM_WORLD);
+
+	MPI_Type_free(&send_type);
 
 
+	if(my_rank == 0){
+		// Output eve< rank
+		cout << "\n\nFinal Output" <<endl;
+		// for(int i=0; i < matrix_size; ++i){
+		// 	for(int j=0; j < matrix_size; ++j)
+		// 		cout << setprecision(2)<< matrix[i][j] << "\t";
+		// 	cout << "\n" << endl;
+		// }
+		for(int i=0; i<recvbuf.size(); ++i){
+			if(i%matrix_size == 0)
+				cout << endl;
+			cout << recvbuf[i] << "\t";
+		}
+		cout << endl;
+
+	}
 
 	MPI_Finalize();
 	return 0;
